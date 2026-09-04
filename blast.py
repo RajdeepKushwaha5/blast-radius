@@ -266,6 +266,9 @@ def main():
         root, base_tree = demo_trees()
         base = "the bundled base tree"
     else:
+        if not os.path.isabs(sys.argv[2]):
+            sys.stderr.write("root must be an ABSOLUTE path, or the word demo. Got: " + sys.argv[2] + chr(10) + "A step runs inside rote's own workspace, not the directory you were standing in, so a relative path silently scans the wrong tree. There is no correct fallback: the step cannot see your shell directory." + chr(10))
+            sys.exit(2)
         root = os.path.abspath(sys.argv[2])
         base_tree = None
         base = sys.argv[3]
