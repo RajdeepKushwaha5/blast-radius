@@ -34,6 +34,35 @@ against real Flask it found **nothing**, while a live caller sat at
 imports are the normal shape inside a package, so a scan that ignores them reports a
 clean refactor for almost every real repository.
 
+## A deleted module used to be invisible
+
+`git diff --name-only` lists a deleted file exactly like any other changed file, and the
+only way the scan noticed was that opening it raised `FileNotFoundError`. That got recorded
+as an unreadable path, with two consequences. A complete, correct scan was downgraded to
+"incomplete scan, 1 path unreadable" — a warning that means something, spent on a file that
+was *supposed* to be absent. And the module never entered the caller search at all, so
+callers of a deleted module, the single largest blast radius there is, were the one thing
+the play could not find.
+
+It surfaced on `pallets/click`, comparing `HEAD` against `HEAD~50`:
+
+```
+## Incomplete scan (1 path(s) unreadable)
+- tests/test_utils.py (FileNotFoundError)
+```
+
+That file was deleted upstream, not unreadable. Reading `--name-status --no-renames`
+instead distinguishes the two, and a deleted file is now treated as what it is: every
+symbol it defined is a removed symbol. Same repository, same two revisions, after the fix:
+
+```
+## No orphaned callers found
+Every resolvable call site for 68 changed symbol(s) still fits its new signature.
+```
+
+`--no-renames` is deliberate. A rename arrives as a delete plus an add, which is what a
+caller of the old module actually experiences.
+
 ## Where the idea comes from
 
 *AI Agents in Depth*, section 7.5.2, lists **Incomplete edit** as a named failure class:
@@ -56,13 +85,21 @@ off as a clean one.
 ## Verify it
 
 ```bash
-cd fixture && git init -q && git add -A && git commit -qm base && git branch -M main
-# then apply the refactor in EXPECT.md and run against main
+./build-fixture.sh
+# prints the fixture path and its base commit, then the exact command to run
 ```
 
-The bundled fixture covers an arity increase, an arity decrease, a removed symbol, a
-changed method on a class, argument unpacking, a call site the refactor did update, and a
-same-named function in an unrelated module. The last two must produce nothing.
+Both sides of the refactor are checked in, under `fixture/base` and `fixture/head`, so you
+can read the change as a diff before trusting anything the play says about it. The script
+builds them into a two-commit repository.
+
+The fixture covers an arity increase, an arity decrease, a removed symbol, a whole deleted
+module reached through a relative import, a changed method on a class, and argument
+unpacking. Six findings, listed line by line in `EXPECT.md`.
+
+It also covers two cases that must produce **nothing**: a call site the refactor did
+update, and a same-named function in an unrelated module. If either shows up, the play is
+guessing.
 
 ## Licence
 

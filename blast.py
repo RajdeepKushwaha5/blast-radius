@@ -77,18 +77,40 @@ def bindings(tree, changed_mods, pkg):
 
 
 def collect_changes(root, base):
-    raw = git(["diff", "--name-only", base + "...HEAD", "--", "*.py"], root) or ""
-    changed = [f for f in raw.split() if f.endswith(".py")]
+    # --name-status, not --name-only: a deleted file is absent from the working tree for
+    # a reason, and cannot be told apart from an unreadable one by the path alone.
+    # --no-renames so a rename arrives as a delete plus an add, which is what a caller of
+    # the old module actually experiences.
+    raw = git(["diff", "--name-status", "--no-renames", base + "...HEAD", "--", "*.py"],
+              root) or ""
+    changed, deleted = [], set()
+    for line in raw.splitlines():
+        parts = [c for c in line.split("	") if c]
+        if len(parts) < 2:
+            continue
+        status, path = parts[0].strip(), parts[-1].strip()
+        if not path.endswith(".py"):
+            continue
+        changed.append(path)
+        if status.startswith("D"):
+            deleted.add(path)
     affected, unreadable = {}, []
     for f in changed:
         old = git(["show", base + ":" + f], root)
         if old is None:
             continue
-        try:
-            new = open(os.path.join(root, f), encoding="utf-8").read()
-        except (OSError, UnicodeDecodeError) as e:
-            unreadable.append({"path": f, "reason": type(e).__name__})
-            continue
+        if f in deleted:
+            # Every symbol a deleted file defined is a removed symbol, which is the
+            # largest blast radius there is. Reporting it as unreadable cried wolf about
+            # a complete scan and, worse, dropped the module from the caller search
+            # entirely, so callers of a deleted module were never looked for.
+            new = ""
+        else:
+            try:
+                new = open(os.path.join(root, f), encoding="utf-8").read()
+            except (OSError, UnicodeDecodeError) as e:
+                unreadable.append({"path": f, "reason": type(e).__name__})
+                continue
         o, n = signatures(old), signatures(new)
         delta = {}
         for name, osig in o.items():
