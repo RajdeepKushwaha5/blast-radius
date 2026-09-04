@@ -12,6 +12,19 @@ rote play run https://play.modiqo.ai/rajdeepkushwaha/blast-radius \
 
 Zero credentials. Never imports or executes your code: only `ast.parse` and `git` touch it.
 
+## Try it with nothing set up
+
+```bash
+rote play run https://play.modiqo.ai/rajdeepkushwaha/blast-radius root=demo base_ref=demo
+```
+
+`root=demo` compares two directory trees bundled with the play instead of two git
+revisions. Same analysis, one less prerequisite: no repository, no resolvable base ref, no
+clone. It produces the six findings in `EXPECT.md`, including the deleted module.
+
+The directory comparison is not only for the demo. It is how you point this at a vendored
+copy against its upstream, where there is no shared history to diff.
+
 ## Verdicts
 
 | verdict | what is being claimed |

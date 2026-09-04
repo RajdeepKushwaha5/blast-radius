@@ -4,6 +4,9 @@
     blast.py signatures <root> <base_ref>
     blast.py callers    <root> <base_ref> <signatures-json>
 
+Pass root=demo to compare the two bundled trees instead of two git revisions, so the play
+can be tried on a machine with nothing set up.
+
 Compares a repository at two git revisions with ast, then resolves call sites across the
 whole tree. A symbol is only matched through an import that actually binds it, including
 relative imports, so an unrelated function of the same name elsewhere is never blamed.
@@ -76,6 +79,67 @@ def bindings(tree, changed_mods, pkg):
     return b
 
 
+def demo_trees():
+    """The bundled demo, so the play can be tried on a machine with nothing set up."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, "demo", "head"), os.path.join(here, "demo", "base")
+
+
+def collect_changes_trees(head, base):
+    """Compare two directory trees rather than two git revisions.
+
+    Same question, one less prerequisite. A play that needs a repository and a resolvable
+    base ref before it can show anything cannot be tried on a clean machine, and the first
+    thing a reader wants is to see what the output looks like.
+    """
+    def tree(d):
+        out = {}
+        for dirpath, dirnames, files in os.walk(d):
+            dirnames[:] = [x for x in dirnames if x not in SKIP_DIRS]
+            for fn in files:
+                if fn.endswith(".py"):
+                    full = os.path.join(dirpath, fn)
+                    out[os.path.relpath(full, d)] = full
+        return out
+
+    b, h = tree(base), tree(head)
+    changed, affected, unreadable = [], {}, []
+
+    def read(path, rel):
+        try:
+            return open(path, encoding="utf-8").read()
+        except (OSError, UnicodeDecodeError) as e:
+            unreadable.append({"path": rel, "reason": type(e).__name__})
+            return None
+
+    for rel in sorted(b):
+        old = read(b[rel], rel)
+        if old is None:
+            continue
+        if rel in h:
+            new = read(h[rel], rel)
+            if new is None:
+                continue
+            if new == old:
+                continue
+        else:
+            new = ""   # absent from head: deleted, exactly as in the git path
+        changed.append(rel)
+        oldsigs, newsigs = signatures(old), signatures(new)
+        delta = {}
+        for name, osig in oldsigs.items():
+            if name not in newsigs:
+                delta[name] = None
+            elif newsigs[name] != osig:
+                delta[name] = newsigs[name]
+        if delta:
+            affected[modname(rel)] = delta
+
+    # a file the refactor added is part of the refactor, so it is not a missed call site
+    changed.extend(sorted(rel for rel in h if rel not in b))
+    return changed, affected, unreadable
+
+
 def collect_changes(root, base):
     # --name-status, not --name-only: a deleted file is absent from the working tree for
     # a reason, and cannot be told apart from an unreadable one by the path alone.
@@ -123,7 +187,7 @@ def collect_changes(root, base):
     return changed, affected, unreadable
 
 
-def find_callers(root, base, changed, affected, unreadable):
+def find_callers(root, base, changed, affected, unreadable, head="HEAD"):
     findings, changed_set = [], set(changed)
     if not affected:
         return findings
@@ -178,7 +242,7 @@ def find_callers(root, base, changed, affected, unreadable):
                     why = "argument unpacking; arity not statically known"
                 elif sig is None:
                     verdict = "REMOVED_SYMBOL_STILL_CALLED"
-                    why = "defined at %s, absent at HEAD" % base
+                    why = "defined at %s, absent at %s" % (base, head)
                 elif given < sig[0]:
                     verdict = "ORPHANED_CALL_SITE"
                     why = "passes %d, now requires %d" % (given, sig[0])
@@ -197,17 +261,25 @@ def main():
         sys.stderr.write("usage: blast.py signatures|callers <root> <base_ref> [json]\n")
         sys.exit(2)
     mode = sys.argv[1]
-    root = os.path.abspath(sys.argv[2])
-    base = sys.argv[3]
+    demo = sys.argv[2] == "demo"
+    if demo:
+        root, base_tree = demo_trees()
+        base = "the bundled base tree"
+    else:
+        root = os.path.abspath(sys.argv[2])
+        base_tree = None
+        base = sys.argv[3]
     if not os.path.isdir(root):
         sys.stderr.write("error: no such directory: %s\n" % root)
         sys.exit(1)
-    if git(["rev-parse", "--verify", "--quiet", base + "^{commit}"], root) is None:
+    if not demo and git(["rev-parse", "--verify", "--quiet", base + "^{commit}"],
+                        root) is None:
         sys.stderr.write("error: cannot resolve base ref %r in %s\n" % (base, root))
         sys.exit(1)
 
     if mode == "signatures":
-        changed, affected, unreadable = collect_changes(root, base)
+        changed, affected, unreadable = (collect_changes_trees(root, base_tree) if demo
+                                         else collect_changes(root, base))
         print(json.dumps({"base": base, "changed_files": changed, "affected": affected,
                           "unreadable": unreadable}, separators=(",", ":")))
         return
@@ -216,7 +288,8 @@ def main():
     changed = up.get("changed_files", [])
     affected = up.get("affected", {})
     unreadable = list(up.get("unreadable", []))
-    findings = find_callers(root, base, changed, affected, unreadable)
+    findings = find_callers(root, base, changed, affected, unreadable,
+                            head="the bundled head tree" if demo else "HEAD")
     symbols = sorted(s for d in affected.values() for s in d)
     print(json.dumps({"base": base, "changed_files": changed, "affected_symbols": symbols,
                       "unreadable": unreadable,
