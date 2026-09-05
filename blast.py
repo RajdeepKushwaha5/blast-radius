@@ -21,7 +21,7 @@ SKIP_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules", ".tox", ".m
 
 def git(args, cwd):
     try:
-        p = subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True, timeout=30)
+        p = subprocess.run(["git", "-c", "core.quotePath=false"] + args, cwd=cwd, capture_output=True, text=True, timeout=30)
     except Exception:
         return None
     return p.stdout if p.returncode == 0 else None
