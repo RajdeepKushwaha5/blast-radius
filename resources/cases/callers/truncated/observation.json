@@ -1,0 +1,36 @@
+{
+ "status": "completed",
+ "output": {
+  "shape": "single",
+  "response_id": 1,
+  "duration": 5,
+  "body": {
+   "schema_version": 1,
+   "kind": "process.exec",
+   "status": {
+    "spawned": true,
+    "exit": {
+     "kind": "code",
+     "code": 0
+    },
+    "timed_out": false,
+    "duration_ms": 5,
+    "timeout_ms": 120000
+   },
+   "stdout": {
+    "bytes": 100612,
+    "text": "{\"base\":\"the bundled base tree\",\"changed_files\":[\"src/api.py\",\"src/archive.py\",\"src/orders.py\"],\"affected_symbols\":[\"Cart.add\",\"apply_discount\",\"archive_order\",\"cancel_order\",\"place_order\"],\"unreadable\":[],\"findings\":[{\"file\":\"src/admin.py\",\"line\":3,\"symbol\":\"cancel_order\",\"module\":\"src.orders\",\"verdict\":\"REMOVED_SYMBOL_STILL_CALLED\",\"reason\":\"defined at the bundled base tree, absent at the bundled head tree\"},{\"file\":\"src/billing.py\",\"line\":3,\"symbol\":\"apply_discount\",\"module\":\"src.orders\",\"verdict\":\"ORPHANED_CALL_SITE\",\"reason\":\"passes 3, now accepts at most 2\"},{\"file\":\"src/carts.py\",\"line\":3,\"symbol\":",
+    "preview_bytes": 612,
+    "truncated": true,
+    "encoding": "utf8"
+   },
+   "stderr": {
+    "bytes": 0,
+    "text": "",
+    "preview_bytes": 0,
+    "truncated": false,
+    "encoding": "utf8"
+   }
+  }
+ }
+}
